@@ -1,26 +1,52 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class GameObjectPool : MonoBehaviour {
     private const int DEFAULT_MAX = 100;
-    private const int DEFAULT_MIN = 1;
     private const int DEFAULT_BUFFER = 10;
 
     [SerializeField] private GameObject prefab;
     [SerializeField] private Transform container;
     [SerializeField] private int max = DEFAULT_MAX;
-    [SerializeField] private int min = DEFAULT_MIN;
     [SerializeField] private int buffer = DEFAULT_BUFFER;
+    [SerializeField] private bool enableOnGet = true;
 
-    private List<GameObject> Pool { get; } = new List<GameObject>();
-
-    private IEnumerator maintainPool;
+    private List<GameObject> pool = new List<GameObject>();
     private bool isMaintaining = false;
+
+    #region Properties
+    public GameObject Prefab {
+        get { return this.prefab; }
+        set { this.prefab = value; }
+    }
+
+    public Transform Container {
+        get { return this.container; }
+        set { this.container = value; }
+    }
+
+    public int Max {
+        get { return this.max; }
+        set { this.max = value; }
+    }
+
+    public int Buffer {
+        get { return this.buffer; }
+        set { 
+            this.buffer = Math.Max(0, value);
+        }
+    }
+
+    public bool EnableOnGet {
+        get { return this.enableOnGet; }
+        set { this.enableOnGet = value; }
+    }
+    #endregion
 
     #region MonoBehaviour
     private void Start() {
-        maintainPool = Fill();
         MaintainPool();
     }
 
@@ -30,41 +56,54 @@ public class GameObjectPool : MonoBehaviour {
     #endregion
 
     public GameObject Get() {
-        foreach(var go in Pool) {
+        GameObject result = null;
+
+        foreach(var go in pool) {
             if(!go.activeSelf) {
-                return go;
+                result = go;
+                break;
             }
         }
 
+        if(result == null) {
+            result = Add();
+        }
+
+        if(enableOnGet) { result.SetActive(true); }
+
         MaintainPool();
-        return Add();
+        return result;
     }
 
-    public GameObject Add() {
+    private GameObject Add() {
+        if(pool.Count > Max) {
+            Debug.LogError($"Warning. {prefab.name} Pool Size ({pool.Count}) is exceeded it's max limit of {Max.ToString()}");
+        }
+
         GameObject go = Instantiate(prefab, container, true);
         go.SetActive(false);
-        Pool.Add(go);
+        pool.Add(go);
         return go;
     }
 
     private void MaintainPool() {
         if(!isMaintaining) {
-            StartCoroutine(maintainPool);
+            StartCoroutine(Fill());
         }
     }
 
-    public IEnumerator Fill() {
+    private IEnumerator Fill() {
         isMaintaining = true;
         int freeCount = 0;
 
-        foreach(var go in Pool) {
+        foreach(var go in pool) {
             if(!go.activeSelf) { freeCount++; }
         }
 
         int delta = 0;
-        if(freeCount < (min + buffer)) {
-            delta = (min + buffer) - freeCount;
-            for(int i = 0; i < delta; i++) {
+        if(freeCount < buffer) {
+            delta = buffer - freeCount;
+            for(int i = 0; i < delta; i++) {   
                 Add();
                 yield return null;
             }
